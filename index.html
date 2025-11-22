@@ -1,1 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Generador - Player</title>
 
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+  <style>
+    :root { --primary:#000; --bg:#0f0f0f; --card:#121212; --muted:#bdbdbd; }
+    body{background:var(--bg); color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto;}
+    .bg-custom{background:var(--primary); color:#fff;}
+    .card{background:var(--card); border:1px solid rgba(255,255,255,.04)}
+    .form-control, .btn {border-radius:6px;}
+    a {color:var(--primary);}
+    .host-sample {max-height:220px; overflow:auto;}
+    .small-muted{color:var(--muted);}
+    footer{opacity:.7;font-size:13px;}
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+    <header class="d-flex align-items-center mb-3">
+      <h3 class="mb-0 mr-3">MyPlayer — Generador</h3>
+      <small class="small-muted">Crea el enlace /player/?id=...&poster=...&sub=...</small>
+    </header>
+
+    <div class="row">
+      <div class="col-lg-7">
+        <div class="card p-3 mb-3">
+          <label class="mb-1">URL principal (Filemoon / Google Drive / YouTube / etc.)</label>
+          <input id="inputUrl" class="form-control mb-2" placeholder="https://filemoon.sx/d/xxxx or https://drive.google.com/file/d/ID/view" />
+
+          <label class="mb-1">Poster (opcional)</label>
+          <input id="inputPoster" class="form-control mb-2" placeholder="https://example.com/poster.jpg" />
+
+          <label class="mb-1">Subtítulo (URL .vtt/.srt) (opcional)</label>
+          <input id="inputSub" class="form-control mb-2" placeholder="https://example.com/subtitle.vtt" />
+
+          <div class="d-flex">
+            <button class="btn btn-dark btn-block mr-2" onclick="generate()">Generar enlace</button>
+            <button class="btn btn-outline-light" onclick="fillExample()">Ejemplo</button>
+          </div>
+
+          <div class="mt-3 d-none" id="resultBox">
+            <label>Enlace generado</label>
+            <div class="input-group mb-2">
+              <input id="resultUrl" class="form-control" readonly>
+              <div class="input-group-append">
+                <button class="btn btn-secondary" onclick="copyResult()">Copiar</button>
+                <a id="openResult" class="btn btn-success" target="_blank" rel="noopener">Abrir</a>
+              </div>
+            </div>
+            <small class="small-muted">Pega ese enlace donde quieras o usa el botón Abrir para ver el reproductor.</small>
+          </div>
+
+        </div>
+
+        <div class="card p-3 mb-3">
+          <h6 class="mb-2">Acciones rápidas</h6>
+          <div class="btn-group btn-group-sm w-100" role="group">
+            <button class="btn btn-outline-light" onclick="quick('https://drive.google.com/file/d/FILE_ID/view')">Google Drive</button>
+            <button class="btn btn-outline-light" onclick="quick('https://filemoon.sx/d/auvcctrj0313')">Filemoon</button>
+            <button class="btn btn-outline-light" onclick="quick('https://youtu.be/VIDEO_ID')">YouTube</button>
+            <button class="btn btn-outline-light" onclick="quick('https://streamtape.com/e/XXXXX')">StreamTape</button>
+          </div>
+        </div>
+
+        <div class="card p-3">
+          <h6>Nota</h6>
+          <p class="small-muted mb-0">El enlace creado apunta a <code>player.html</code> en la misma carpeta. Si quieres usar otro nombre o subdirectorio, edita la variable <code>playerPath</code> en el script.</p>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="card p-3 mb-3">
+          <h6 class="mb-2">Hosts soportados (40+)</h6>
+          <input id="searchHost" class="form-control mb-2" placeholder="Buscar host..." oninput="filterHosts()" />
+          <div class="host-sample">
+            <table class="table table-sm table-borderless mb-0">
+              <tbody id="hostsList">
+                <!-- 40+ hosts: puedes añadir/editar según necesites -->
+                <tr data-host="filemoon"><td>Filemoon</td><td class="small-muted">filemoon.sx</td></tr>
+                <tr data-host="gdrive"><td>Google Drive</td><td class="small-muted">drive.google.com</td></tr>
+                <tr data-host="youtube"><td>YouTube</td><td class="small-muted">youtube.com / youtu.be</td></tr>
+                <tr data-host="streamtape"><td>StreamTape</td><td class="small-muted">streamtape.com</td></tr>
+                <tr data-host="dood"><td>DoodStream</td><td class="small-muted">dood.to</td></tr>
+                <tr data-host="mixdrop"><td>MixDrop</td><td class="small-muted">mixdrop.co</td></tr>
+                <tr data-host="uptobox"><td>Uptobox</td><td class="small-muted">uptobox.com</td></tr>
+                <tr data-host="mega"><td>MEGA</td><td class="small-muted">mega.nz</td></tr>
+                <tr data-host="dropbox"><td>Dropbox</td><td class="small-muted">dropbox.com</td></tr>
+                <tr data-host="mediafire"><td>MediaFire</td><td class="small-muted">mediafire.com</td></tr>
+                <tr data-host="filelions"><td>FileLions</td><td class="small-muted">filelions.to</td></tr>
+                <tr data-host="filecloud"><td>FileCloud</td><td class="small-muted">filecloud.io</td></tr>
+                <tr data-host="fireload"><td>Fireload</td><td class="small-muted">fireload.com</td></tr>
+                <tr data-host="uploady"><td>Uploady</td><td class="small-muted">uploady.io</td></tr>
+                <tr data-host="uploadhaven"><td>UploadHaven</td><td class="small-muted">uploadhaven.com</td></tr>
+                <tr data-host="fembed"><td>Fembed</td><td class="small-muted">fembed.com</td></tr>
+                <tr data-host="vidcloud"><td>VidCloud</td><td class="small-muted">vidcloud</td></tr>
+                <tr data-host="vidlox"><td>VidLox</td><td class="small-muted">vidlox</td></tr>
+                <tr data-host="rapidvideo"><td>RapidVideo</td><td class="small-muted">rapidvideo.com</td></tr>
+                <tr data-host="okru"><td>OK.ru</td><td class="small-muted">ok.ru</td></tr>
+                <tr data-host="rutube"><td>Rutube</td><td class="small-muted">rutube.ru</td></tr>
+                <tr data-host="vimeo"><td>Vimeo</td><td class="small-muted">vimeo.com</td></tr>
+                <tr data-host="gofile"><td>Gofile</td><td class="small-muted">gofile.io</td></tr>
+                <tr data-host="terabox"><td>TeraBox</td><td class="small-muted">terabox.com</td></tr>
+                <tr data-host="fileio"><td>File.io</td><td class="small-muted">file.io</td></tr>
+                <tr data-host="sendvid"><td>SendVid</td><td class="small-muted">sendvid.com</td></tr>
+                <tr data-host="uptomega"><td>Uptomega</td><td class="small-muted">uptomega.net</td></tr>
+                <tr data-host="iceyfile"><td>IceyFile</td><td class="small-muted">iceyfile.com</td></tr>
+                <tr data-host="darkibox"><td>Darkibox</td><td class="small-muted">darkibox.com</td></tr>
+                <tr data-host="cyberfile"><td>CyberFile</td><td class="small-muted">cyberfile.me</td></tr>
+                <tr data-host="goodstream"><td>GoodStream</td><td class="small-muted">goodstream.uno</td></tr>
+                <tr data-host="dropden"><td>Dropden</td><td class="small-muted">dropden.com</td></tr>
+                <tr data-host="filemail"><td>Filemail</td><td class="small-muted">filemail.com</td></tr>
+                <tr data-host="freedl"><td>FreeDlink</td><td class="small-muted">frdl.to</td></tr>
+                <tr data-host="mediacm"><td>Media.cm</td><td class="small-muted">media.cm</td></tr>
+                <tr data-host="navertv"><td>NaverTV</td><td class="small-muted">tv.naver.com</td></tr>
+                <tr data-host="dailymotion"><td>Dailymotion</td><td class="small-muted">dailymotion.com</td></tr>
+                <tr data-host="direct"><td>Direct (mp4 / m3u8)</td><td class="small-muted">direct URL</td></tr>
+                <tr data-host="others"><td>Otros</td><td class="small-muted">y más...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card p-3">
+          <h6>Subtítulos</h6>
+          <p class="small-muted mb-0">El player soporta subtítulos externos (.vtt/.srt). Si pones una URL en "Subtítulo" se añadirá al reproductor.</p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="mt-4 text-center small-muted">
+      Hecho por ti — Player limpio y personal. Asegúrate de subir <code>player.html</code> a la misma carpeta.
+    </footer>
+  </div>
+
+<script>
+  const playerPath = 'player.html'; // Cambia si tu player se llama distinto o está en otra carpeta
+
+  function generate(){
+    const url = document.getElementById('inputUrl').value.trim();
+    if(!url) return alert('Pega una URL de video primero.');
+    const poster = encodeURIComponent(document.getElementById('inputPoster').value.trim() || '');
+    const sub = encodeURIComponent(document.getElementById('inputSub').value.trim() || '');
+    // build link: player.html?id=<url>&poster=<poster>&sub=<sub>
+    const link = `${playerPath}?id=${encodeURIComponent(url)}${poster? '&poster='+poster : ''}${sub? '&sub='+sub : ''}`;
+    document.getElementById('resultUrl').value = link;
+    document.getElementById('openResult').href = link;
+    document.getElementById('resultBox').classList.remove('d-none');
+  }
+
+  function copyResult(){
+    const el = document.getElementById('resultUrl');
+    el.select(); el.setSelectionRange(0,99999);
+    document.execCommand('copy');
+    alert('Enlace copiado al portapapeles.');
+  }
+
+  function quick(u){
+    document.getElementById('inputUrl').value = u;
+  }
+
+  function fillExample(){
+    document.getElementById('inputUrl').value = 'https://filemoon.sx/d/auvcctrj0313';
+    document.getElementById('inputPoster').value = 'https://example.com/poster.jpg';
+    document.getElementById('inputSub').value = '';
+  }
+
+  function filterHosts(){
+    const q = document.getElementById('searchHost').value.toLowerCase();
+    document.querySelectorAll('#hostsList tr').forEach(r=>{
+      const txt = r.innerText.toLowerCase();
+      r.style.display = txt.indexOf(q)===-1 ? 'none' : '';
+    });
+  }
+</script>
+</body>
+</html>
