@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Player</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css">
+  <style>
+    :root { --bg:#000; --panel:#0b0b0b; --muted:#999; --accent:#fff; }
+    body{margin:0;background:var(--bg);color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto;}
+    .panel{background:var(--panel);padding:12px;}
+    .video-wrap{max-width:1000px;margin:18px auto;}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .info small{color:var(--muted)}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.06);color:#fff}
+    .subtitle-list{max-height:120px;overflow:auto}
+    iframe, video{width:100%;height:100%;}
+    .player-box{background:#000;border-radius:6px;overflow:hidden}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  </style>
+</head>
+<body>
+  <div class="video-wrap">
+    <div class="panel player-box">
+      <div class="topbar p-2">
+        <div>
+          <strong id="title">Reproductor</strong><br>
+          <small id="hostLabel" class="small-muted"></small>
+        </div>
+        <div class="controls">
+          <a id="openOriginal" class="btn btn-ghost btn-sm" target="_blank" rel="noopener">Abrir fuente</a>
+          <button id="btnReload" class="btn btn-ghost btn-sm" onclick="location.reload()">Recargar</button>
+        </div>
+      </div>
+
+      <div id="playerArea" style="position:relative;padding-top:56.25%">
+        <!-- Aquí se inserta el <video> o <iframe> dinámicamente -->
+      </div>
+
+      <div class="p-3">
+        <div class="info mb-2">
+          <small id="paramsInfo" class="small-muted"></small>
+        </div>
+
+        <div class="d-flex gap-2">
+          <div class="flex-fill">
+            <label class="small-muted">Subtítulo activo (URL)</label>
+            <div class="subtitle-list" id="subtitleList"></div>
+          </div>
+          <div style="width:180px">
+            <label class="small-muted">Poster</label><br>
+            <img id="posterPreview" src="" alt="poster" style="width:100%;border-radius:6px;display:block" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="text-center mt-2 small-muted">Player limpio — no depende de terceros.</div>
+  </div>
+
+<!-- Hls.js para reproducir m3u8 cuando no hay soporte nativo -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.0/hls.min.js"></script>
+
+<script>
+  // helpers
+  function getParam(name){
+    const u = new URL(location.href);
+    return u.searchParams.get(name) || '';
+  }
+
+  function isM3U8(url){ return /\.m3u8(\?|$)/i.test(url); }
+  function isMP4(url){ return /\.mp4(\?|$)/i.test(url); }
+  function isDirectVideo(url){ return isMP4(url) || isM3U8(url); }
+
+  // host detection + transform rules
+  const hosts = [
+    // hostKey, match check (contains), transformer function -> returned embedSrc + type ('iframe'|'video'|'direct')
+    {key:'gdrive', check: u=>u.includes('drive.google.com'), transform: u=>{
+      const m = u.match(/\\/d\\/([a-zA-Z0-9_-]{10,})/);
+      if(m) return {src:'https://drive.google.com/file/d/'+m[1]+'/preview', type:'iframe', original:u};
+      const id = new URL(u).searchParams.get('id');
+      if(id) return {src:'https://drive.google.com/file/d/'+id+'/preview', type:'iframe', original:u};
+      return {src:u, type:'iframe', original:u};
+    }},
+    {key:'youtube', check: u=>u.includes('youtu.be') || u.includes('youtube.com/watch'), transform: u=>{
+      let vid = '';
+      if(u.includes('youtu.be/')) vid = u.split('youtu.be/')[1].split(/[?&]/)[0];
+      else vid = (new URL(u)).searchParams.get('v') || '';
+      return {src:'https://www.youtube.com/embed/'+vid+'?rel=0', type:'iframe', original:u};
+    }},
+    {key:'filemoon', check: u=>u.includes('filemoon.sx')||u.includes('filemoon.to')||u.includes('filemoon.xyz'), transform: u=>{
+      // Filemoon usually supports /e/ or /d/ endpoints; use the same URL (embed-friendly)
+      if(u.indexOf('/e/')!==-1 || u.indexOf('/embed-')!==-1) return {src:u, type:'iframe', original:u};
+      // if /d/ use /e/ when possible (some hosts support /e/)
+      return {src:u.replace('/d/','/e/'), type:'iframe', original:u};
+    }},
+    {key:'streamtape', check: u=>u.includes('streamtape.com'), transform: u=>{
+      if(u.indexOf('/e/')!==-1) return {src:u, type:'iframe', original:u};
+      return {src:u.replace('/v/','/e/'), type:'iframe', original:u};
+    }},
+    {key:'dood', check: u=>u.includes('dood.to') || u.includes('doodstream'), transform: u=>{
+      if(u.indexOf('/e/')!==-1 || u.indexOf('/d/')!==-1) return {src:u, type:'iframe', original:u};
+      return {src:u, type:'iframe', original:u};
+    }},
+    {key:'mixdrop', check: u=>u.includes('mixdrop.co'), transform: u=>({src:u, type:'iframe', original:u})},
+    {key:'fembed', check: u=>u.includes('fembed.com'), transform: u=>({src:u, type:'iframe', original:u})},
+    {key:'rapidvideo', check: u=>u.includes('rapidvideo.com'), transform: u=>({src:u, type:'iframe', original:u})},
+    {key:'vimeo', check: u=>u.includes('vimeo.com'), transform: u=>({src:u.replace('/watch/','/video/'), type:'iframe', original:u})},
+    {key:'direct', check: u=>isDirectVideo(u), transform: u=>({src:u, type: isM3U8(u)?'hls':'video', original:u})},
+    // fallback: iframe
+    {key:'default', check: u=>true, transform: u=>({src:u, type:'iframe', original:u})}
+  ];
+
+  // subtitle languages preserved (not used for UI here but kept for compat)
+  const languages = ["Unknown CC","Afrikaans","Albanian","Amharic","Arabic","Armenian","Assamese","Aymara","Azerbaijani","Bambara","Basque","Belarusian","Bengali","Bhojpuri","Bosnian","Bulgarian","Catalan","Cebuano","Chichewa","Chinese (Simplified)","Chinese (Traditional)","Corsican","Croatian","Czech","Danish","Dhivehi","Dogri","Dutch","English","Esperanto","Estonian","Ewe","Filipino","Finnish","French","Galician","Georgian","German","Greek","Gujarati","Haitian Creole","Hausa","Hebrew","Hindi","Hungarian","Icelandic","Igbo","Indonesian","Irish","Italian","Japanese","Javanese","Kannada","Kazakh","Khmer","Kinyarwanda","Korean","Kurdish","Kyrgyz","Lao","Latvian","Lithuanian","Luxembourgish","Macedonian","Malagasy","Malay","Malayalam","Maltese","Maori","Marathi","Mongolian","Myanmar (Burmese)","Nepali","Norwegian","Odia (Oriya)","Oromo","Pashto","Persian","Polish","Portuguese","Punjabi","Quechua","Romanian","Russian","Samoan","Sanskrit","Scots Gaelic","Sepedi","Serbian","Sesotho","Shona","Sindhi","Sinhala","Slovak","Slovenian","Somali","Spanish","Sundanese","Swahili","Swedish","Tajik","Tamil","Tatar","Telugu","Thai","Tigrinya","Tsonga","Turkish","Turkmen","Twi","Ukrainian","Urdu","Uyghur","Uzbek","Vietnamese","Welsh","Xhosa","Yiddish","Yoruba","Zulu"];
+
+  // main process
+  (function(){
+    const idParam = getParam('id');
+    const posterParam = getParam('poster');
+    const subParam = getParam('sub');
+
+    if(!idParam){
+      document.getElementById('playerArea').innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="text-align:center;color:#ccc">No se encontró parámetro <strong>id</strong>.<br>Usa <code>player.html?id=URL</code></div></div>';
+      return;
+    }
+
+    const url = decodeURIComponent(idParam);
+    const poster = posterParam? decodeURIComponent(posterParam) : '';
+    const sub = subParam? decodeURIComponent(subParam) : '';
+
+    document.getElementById('paramsInfo').innerText = `Fuente: ${url}`;
+    document.getElementById('openOriginal').href = url;
+    document.getElementById('posterPreview').src = poster || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect width="100%" height="100%" fill="%23090909"/><text x="50%" y="50%" fill="%23999" font-size="18" text-anchor="middle" alignment-baseline="middle">Poster</text></svg>';
+
+    // detect host rule
+    let matched = hosts.find(h=> h.check(url) );
+    if(!matched) matched = hosts[hosts.length-1];
+
+    const result = matched.transform(url);
+    document.getElementById('hostLabel').innerText = matched.key;
+
+    // create container
+    const area = document.getElementById('playerArea');
+    area.innerHTML = ''; // clear
+    area.style.paddingTop = '56.25%'; // 16:9 ratio
+
+    // container for absolute positioned player
+    const holder = document.createElement('div');
+    holder.style.position='absolute'; holder.style.inset='0';
+    area.appendChild(holder);
+
+    if(result.type === 'video' || result.type === 'hls'){
+      // create HTML5 video
+      const video = document.createElement('video');
+      video.controls = true;
+      video.autoplay = false;
+      video.playsInline = true;
+      video.poster = poster || '';
+      video.style.width='100%'; video.style.height='100%'; video.style.background='#000';
+      holder.appendChild(video);
+
+      // subtitles
+      if(sub){
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.label = 'Sub';
+        track.srclang = 'es';
+        track.src = sub;
+        track.default = true;
+        video.appendChild(track);
+      }
+
+      if(result.type === 'hls'){
+        // use hls.js if necessary
+        if(Hls.isSupported()){
+          const hls = new Hls();
+          hls.loadSource(result.src);
+          hls.attachMedia(video);
+        } else {
+          // native
+          video.src = result.src;
+        }
+      } else {
+        video.src = result.src;
+      }
+
+    } else {
+      // iframe embedding (for youtube, filemoon, streamtape, etc.)
+      const iframe = document.createElement('iframe');
+      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
+      iframe.frameBorder = 0;
+      iframe.allowFullscreen = true;
+      iframe.src = result.src;
+      // fill
+      iframe.style.width='100%'; iframe.style.height='100%';
+      holder.appendChild(iframe);
+
+      // NOTE: for some hosts you may prefer to transform to an internal /proxy/ endpoint.
+    }
+
+    // show subtitle info
+    const sList = document.getElementById('subtitleList');
+    sList.innerHTML = '';
+    if(sub){
+      const d = document.createElement('div');
+      d.innerHTML = `<div style="padding:6px;border-radius:6px;background:#070707">${sub}</div>`;
+      sList.appendChild(d);
+    } else {
+      sList.innerHTML = '<div class="small-muted">Sin subtítulos</div>';
+    }
+  })();
+
+</script>
+</body>
+</html>
